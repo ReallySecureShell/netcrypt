@@ -353,6 +353,8 @@ function libnetcrypt.open(peerAddress, port, ...)
     
     -- Is used through the rest of the session.
     local digestAlgorithm        = nil
+    local internalReadEventName  = nil
+    local internalWriteEventName = nil
     local isCompressed           = nil
     local iv                     = nil
     local keySize                = nil
@@ -655,8 +657,17 @@ function libnetcrypt.open(peerAddress, port, ...)
     status                 = nil
     ---------------------------------------------------------------------------
     
+    internalReadEventName = "readEvent_"..peerAddress.."_"..port
+    internalReadEventName, _ = internalReadEventName:gsub('-','_')
+    
+    internalWriteEventName = "writeEvent_"..peerAddress.."_"..port
+    internalWriteEventName, _ = internalWriteEventName:gsub('-','_')
+    
     return setmetatable({
         stream = stream;
+        sessionHandleIncomingNetworkMessagesEventID = nil;
+        internalReadEventName  = internalReadEventName;
+        internalWriteEventName = internalWriteEventName;
         sessionRecord = {
             digestAlgorithm = digestAlgorithm,
             isCompressed    = isCompressed,
@@ -680,6 +691,8 @@ function libnetcrypt.listen(port, ...)
     
     -- Is used through the rest of the session.
     local digestAlgorithm        = nil
+    local internalReadEventName  = nil
+    local internalWriteEventName = nil
     local isCompressed           = nil
     local iv                     = nil
     local keySize                = nil
@@ -1075,8 +1088,17 @@ function libnetcrypt.listen(port, ...)
     status                 = nil
     ---------------------------------------------------------------------------
     
+    internalReadEventName = "readEvent_"..peerAddress.."_"..port
+    internalReadEventName, _ = internalReadEventName:gsub('-','_')
+    
+    internalWriteEventName = "writeEvent_"..peerAddress.."_"..port
+    internalWriteEventName, _ = internalWriteEventName:gsub('-','_')
+    
     return setmetatable({
         stream = stream;
+        sessionHandleIncomingNetworkMessagesEventID = nil;
+        internalReadEventName  = internalReadEventName;
+        internalWriteEventName = internalWriteEventName;
         sessionRecord = {
             digestAlgorithm = digestAlgorithm,
             isCompressed    = isCompressed,
@@ -1097,34 +1119,67 @@ end
 
 -- local bar = libnetcrypt.listen(9999, {[1] = 256, [2] = 256}, {[1] = "sha", [2] = "md5"}, {[1] = "true"}) -- Debugging
 
-function libnetcrypt:read()
-    local data   = nil
+function libnetcrypt:incomingNetworkMessagesHandler(peerAddress, port, data)
     local errmsg = nil
     local status = nil
     
-    _, _, _, data = event.pull("net_msg", self.sessionRecord.peerAddress, self.stream.port, nil)
-    
-    status, errmsg, data = packetDeconstructor(data, self.sessionRecord.masterSecret, self.sessionRecord.iv, self.sessionRecord.digestAlgorithm, self.sessionRecord.isCompressed)
-    if not status then
-        -- The peer sent a message whose hash did not match the provided hash within the message.
-        -- Instead of telling the peer they sent a message with a bad checksum, ask the peer to
-        -- resend the message.
-        if errmsg == "bad_checksum" then
-            ALERT["resend"](self.stream, self.sessionRecord.masterSecret, self.sessionRecord.iv, self.sessionRecord.digestAlgorithm, self.sessionRecord.isCompressed)
-            return string.upper(errmsg)
+    if peerAddress == self.sessionRecord.peerAddress and port == self.stream.port and data == self.stream.sclose then
+        -- Do nothing
+    elseif peerAddress == self.sessionRecord.peerAddress and port == self.stream.port and data ~= self.stream.sclose then
+        status, errmsg, data = packetDeconstructor(data, self.sessionRecord.masterSecret, self.sessionRecord.iv, self.sessionRecord.digestAlgorithm, self.sessionRecord.isCompressed)
+        if not status then
+            -- The peer sent a message whose hash did not match the provided hash within the message.
+            -- Instead of telling the peer they sent a message with a bad checksum, ask the peer to
+            -- resend the message.
+            if errmsg == "bad_checksum" then
+                ALERT["resend"](self.stream, self.sessionRecord.masterSecret, self.sessionRecord.iv, self.sessionRecord.digestAlgorithm, self.sessionRecord.isCompressed)
+                event.push(self.internalReadEventName, "WARN", string.upper(errmsg))
+            else
+                self:close(errmsg)
+                error(string.upper(errmsg))
+            end
         else
-            self:close(errmsg)
-            error(string.upper(errmsg))
+            if data["data"][1] == "FATAL" then
+                self:close(data["data"][2])
+                error(data["data"][2])
+            elseif data["data"][1] == "WARN" then
+                if data["data"][2] == "RESEND" then
+                    event.push(self.internalWriteEventName, "WARN", "RESEND")
+                end
+            elseif data["data"][1] == "PEER_MSG" then
+                ALERT["msg_ok"](self.stream, self.sessionRecord.masterSecret, self.sessionRecord.iv, self.sessionRecord.digestAlgorithm, self.sessionRecord.isCompressed)
+                self.sessionRecord.iv = data["data"][3]
+                event.push(self.internalReadEventName, "PEER_MSG", data["data"][2])
+            elseif data["data"][1] == "OK" then
+                if data["data"][2] == "MSG_OK" then
+                    event.push(self.internalWriteEventName, "OK", "MSG_OK")
+                end
+            end
         end
     else
-        if data["data"][1] == "FATAL" then
-            self:close()
-            error(data["data"][2])
-        elseif data["data"][1] == "PEER_MSG" then
-            ALERT["msg_ok"](self.stream, self.sessionRecord.masterSecret, self.sessionRecord.iv, self.sessionRecord.digestAlgorithm, self.sessionRecord.isCompressed)
-            self.sessionRecord.iv = data["data"][3]
-            return data["data"][2]
-        end
+        -- Do nothing
+    end
+end
+
+function libnetcrypt:read()
+    local _       = nil
+    local data    = nil
+    local msgType = nil
+    
+    local function x(_, peerAddress, port, data)
+        self:incomingNetworkMessagesHandler(peerAddress, port, data)
+    end
+    
+    if not self.sessionHandleIncomingNetworkMessagesEventID then
+        self.sessionHandleIncomingNetworkMessagesEventID = event.listen("net_msg", x)
+    end
+    
+    _, msgType, data = event.pull(self.internalReadEventName)
+    
+    if msgType == "WARN" then
+        return data
+    elseif msgType == "PEER_MSG" then
+        return data
     end
 end
 
@@ -1133,11 +1188,21 @@ local function sendPeerMessage(stream, data, newIV, mS, iV, dA, iC)
 end
 
 function libnetcrypt:write(data)
+    local _          = nil
     local errmsg     = nil
     local msgCorrect = 0
+    local msgType    = nil
     local newIV      = nil
-    local response   = nil
     local status     = nil
+    local response   = nil
+    
+    local function y(_, peerAddress, port, data)
+        self:incomingNetworkMessagesHandler(peerAddress, port, data)
+    end
+    
+    if not self.sessionHandleIncomingNetworkMessagesEventID then
+        self.sessionHandleIncomingNetworkMessagesEventID = event.listen("net_msg", y)
+    end
     
     newIV = datacard.random(16)
     
@@ -1149,45 +1214,23 @@ function libnetcrypt:write(data)
     end
     
     repeat
-        -- Listen for the response from peer in-order to know about the state of the transmitted message.
-        -- We want to be able to receive alert messages, and if the message was sent successfully.
-        _, _, _, response = event.pull(timeout, "net_msg", self.sessionRecord.peerAddress, self.stream.port, nil)
+        _, msgType, response = event.pull(timeout, self.internalWriteEventName)
         
-        status, errmsg, response = packetDeconstructor(response, self.sessionRecord.masterSecret, self.sessionRecord.iv, self.sessionRecord.digestAlgorithm, self.sessionRecord.isCompressed)
-        
-        if not status then
-            self:close(errmsg)
-            error(string.upper(errmsg))
-        else
-            -- The timeout was reached for the pull event. We don't
-            -- know the state of the connection. The network could of
-            -- dropped the packet because of congestion, or the
-            -- connection could of been unexpectedly terminated.
-            -- Since we don't know, we'll set the msgCorrect variable to 1
-            -- to break from the loop.
-            if response == "" then
-                msgCorrect = 1 -- On timeout
-            -- The peer has sent a fatal message.
-            elseif response["data"][1] == "FATAL" then
-                self:close()
-                error(response["data"][2])
-            -- A non-fatal message was sent.
-            elseif response["data"][1] == "WARN" then
-                -- The peer has asked that the message be resent because of a bad checksum.
-                if response["data"][2] == "RESEND" then
-                    status, errmsg = sendPeerMessage(self.stream, data, newIV, self.sessionRecord.masterSecret, self.sessionRecord.iv, self.sessionRecord.digestAlgorithm, self.sessionRecord.isCompressed)
-                    if not status then
-                        self:close(errmsg)
-                        error(string.upper(errmsg))
-                    end
+        if msgType == "" then
+            msgCorrect = 1
+        elseif msgType == "WARN" then
+            if msgType == "RESEND" then
+                status, errmsg = sendPeerMessage(self.stream, data, newIV, self.sessionRecord.masterSecret, self.sessionRecord.iv, self.sessionRecord.digestAlgorithm, self.sessionRecord.isCompressed)
+                if not status then
+                    self:close(errmsg)
+                    error(string.upper(errmsg))
                 end
                 msgCorrect = 0
-            -- The message was received successfully by the peer. Set the
-            -- msgCorrect variable to 1, to indicate the peer has successfully
-            -- received and read our message.
-            elseif response["data"][2] == "MSG_OK" then
+            end
+        elseif msgType == "OK" then
+            if response == "MSG_OK" then
                 self.sessionRecord.iv = newIV
-                msgCorrect = 1 -- On valid message
+                msgCorrect = 1
             end
         end
     until(msgCorrect == 1)
@@ -1201,11 +1244,12 @@ function libnetcrypt:close(...)
         ALERT[errmsg](self.stream, self.sessionRecord.masterSecret, self.sessionRecord.iv, self.sessionRecord.digestAlgorithm, self.sessionRecord.isCompressed)
     end
     
-    -- It is possible to still receive network messages after the alert message, so this attempts to consume that
-    -- event.
-    _, _, _, _ = event.pull(3, "net_msg", self.sessionRecord.peerAddress, self.stream.port, nil)
-    
-    self.stream        = nil
+    event.cancel(self.sessionHandleIncomingNetworkMessagesEventID)
+    self.stream:close()
+    self.stream = nil
+    self.sessionHandleIncomingNetworkMessagesEventID = nil
+    self.internalReadEventName = nil
+    self.internalWriteEventName = nil
     self.sessionRecord = nil
 end
 
