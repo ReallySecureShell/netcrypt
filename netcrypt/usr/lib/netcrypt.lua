@@ -451,7 +451,7 @@ end
 local ALERT = {
     ["bad_certificate"]      = function(stream, ...) _, _ = packetBuilder(stream, {["msg_type"] = "FATAL", ["msg"] = "BAD_CERTIFICATE"}, ...) end, -- A certificate was corrupt in some way.
     ["bad_checksum"]         = function(stream, ...) _, _ = packetBuilder(stream, {["msg_type"] = "FATAL", ["msg"] = "BAD_CHECKSUM"}, ...) end, -- When comparing the checksums of the sent and received message, the checksums did not match.
-    ["bad_mac"]              = function(stream, ...) _, _ = packetBuilder(stream, {["msg_type"] = "FATAL", ["msg"] = "BAD_MAC"}, ...) end, -- The signature of the message does not match the contents of the actual received message. Someone may be trying to modify the contents of the message, or the message may have gotten corrupted in some way. During normal communication, this alert is handled specially, in that it will not cause the stream to close. This prevents someone from intentionally modifying a message to cause the stream to close, as that would create a denial of service vulnerability.
+    ["bad_mac"]              = function(stream, ...) _, _ = packetBuilder(stream, {["msg_type"] = "FATAL", ["msg"] = "BAD_MAC"}, ...) end, -- The signature of the message does not match the contents of the actual received message. A malicious party may be trying to attack the connection.
     ["bad_record"]           = function(stream, ...) _, _ = packetBuilder(stream, {["msg_type"] = "FATAL", ["msg"] = "BAD_RECORD"}, ...) end, -- A message had an different hash value than the expected hash value.
     ["close_notify"]         = function(stream, ...) _, _ = packetBuilder(stream, {["msg_type"] = "FATAL", ["msg"] = "CLOSE_NOTIFY"}, ...) end, -- Not an error, but the stream must close immediately.
     ["compression_error"]    = function(stream, ...) _, _ = packetBuilder(stream, {["msg_type"] = "FATAL", ["msg"] = "COMPRESSION_ERROR"}, ...) end, -- The data was unable to be compressed due to an error.
@@ -1419,6 +1419,7 @@ function libnetcrypt:close(...)
         closeReason = "close_notify"
     else
         closeReason = ...
+        closeReason = string.lower(closeReason)
     end
     
     self.state = "close"
