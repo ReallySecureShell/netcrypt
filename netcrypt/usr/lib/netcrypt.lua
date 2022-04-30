@@ -806,11 +806,12 @@ function libnetcrypt.open(peerAddress, port, ...)
     internalWriteEventName, _ = internalWriteEventName:gsub('-','_')
     
     return setmetatable({
-        state  = "open";
-        stream = stream;
-        sessionHandleIncomingNetworkMessagesEventID = nil;
         internalReadEventName  = internalReadEventName;
         internalWriteEventName = internalWriteEventName;
+        peerHasClosedConnection = false;
+        sessionHandleIncomingNetworkMessagesEventID = nil;
+        state  = "open";
+        stream = stream;
         sessionRecord = {
             isCompressed    = isCompressed,
             iv              = iv,
@@ -1256,11 +1257,12 @@ function libnetcrypt.listen(port, ...)
     internalWriteEventName, _ = internalWriteEventName:gsub('-','_')
     
     return setmetatable({
-        state  = "open";
-        stream = stream;
-        sessionHandleIncomingNetworkMessagesEventID = nil;
         internalReadEventName  = internalReadEventName;
         internalWriteEventName = internalWriteEventName;
+        peerHasClosedConnection = false;
+        sessionHandleIncomingNetworkMessagesEventID = nil;
+        state  = "open";
+        stream = stream;
         sessionRecord = {
             isCompressed    = isCompressed,
             iv              = iv,
@@ -1291,9 +1293,6 @@ function libnetcrypt:incomingNetworkMessagesHandler(peerAddress, port, data)
     elseif peerAddress == self.sessionRecord.peerAddress and port == self.stream.port and data ~= self.stream.sclose then
         status, errmsg, data = packetDeconstructor(data, self.sessionRecord.masterSecret, self.sessionRecord.iv, self.sessionRecord.isCompressed, self.sessionRecord.peerPublicKey, self.sessionRecord.localPublicKeyChecksum)
         if not status then
-            -- The peer sent a message whose hash did not match the provided hash within the message.
-            -- Instead of telling the peer they sent a message with a bad checksum, ask the peer to
-            -- resend the message.
             if errmsg == "bad_checksum" then
                 ALERT["resend"](self.stream, self.sessionRecord.masterSecret, self.sessionRecord.iv, self.sessionRecord.isCompressed, self.sessionRecord.localPrivateKey, self.sessionRecord.peerPublicKeyChecksum)
                 event.push(self.internalReadEventName, "WARN", string.upper(errmsg))
@@ -1305,6 +1304,7 @@ function libnetcrypt:incomingNetworkMessagesHandler(peerAddress, port, data)
                 if data["msg"] == "BAD_MAC" then
                     -- Do nothing
                 else
+                    self.peerHasClosedConnection = true
                     self:close(data["msg"])
                 end
             elseif data["msg_type"] == "WARN" then
@@ -1342,9 +1342,7 @@ function libnetcrypt:read()
     if self.state == "open" then
         _, msgType, data = event.pull(self.internalReadEventName)
         
-        if msgType == "SYN_FIN" then
-            return data
-        elseif msgType == "WARN" then
+        if msgType == "WARN" then
             return data
         elseif msgType == "PEER_MSG" then
             return data
@@ -1389,8 +1387,6 @@ function libnetcrypt:write(data)
             
             if msgType == "" then
                 msgCorrect = 1
-            elseif msgType == "SYN_FIN" then
-                msgCorrect = 1
             elseif msgType == "WARN" then
                 if msgType == "RESEND" then
                     status, errmsg = sendPeerMessage(self.stream, data, newIV, self.sessionRecord.masterSecret, self.sessionRecord.iv, self.sessionRecord.isCompressed, self.sessionRecord.localPrivateKey, self.sessionRecord.peerPublicKeyChecksum)
@@ -1424,21 +1420,19 @@ function libnetcrypt:close(...)
     
     self.state = "close"
     
-    -- Stop listening for network messages, all additional network messages
-    -- will be handled below.
+    -- Stop the network message event handler
     event.cancel(self.sessionHandleIncomingNetworkMessagesEventID)
     
-    -- Free up pull events in read and write methods that are potentially
-    -- active at the time of calling close().
-    event.push(self.internalReadEventName, "SYN_FIN", "Session Terminated")
-    event.push(self.internalWriteEventName, "SYN_FIN", "Session Terminated")
-    
-    _, _ = xpcall(function()
-                    ALERT[closeReason](self.stream, self.sessionRecord.masterSecret, self.sessionRecord.iv, self.sessionRecord.isCompressed, self.sessionRecord.localPrivateKey, self.sessionRecord.peerPublicKeyChecksum)
-                end,
-                function(err)
-                    return false
-                end)
+    if self.peerHasClosedConnection == false then
+        _, _ = xpcall(function()
+                        ALERT[closeReason](self.stream, self.sessionRecord.masterSecret, self.sessionRecord.iv, self.sessionRecord.isCompressed, self.sessionRecord.localPrivateKey, self.sessionRecord.peerPublicKeyChecksum)
+                    end,
+                    function(err)
+                        return false
+                    end)
+    else
+        -- Do nothing
+    end
     
     self.stream:close()
     self.state = nil
@@ -1447,8 +1441,6 @@ function libnetcrypt:close(...)
     self.internalReadEventName = nil
     self.internalWriteEventName = nil
     self.sessionRecord = nil
-    
-    error(string.upper(closeReason))
 end
 
 return libnetcrypt
