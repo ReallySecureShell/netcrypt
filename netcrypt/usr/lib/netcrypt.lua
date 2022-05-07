@@ -1335,11 +1335,16 @@ function libnetcrypt:read()
     if self.state == "open" then
         currentTimeout = computer.uptime() + timeout
         repeat
-            data = self.incomingNetworkMessagesStream:read()
+            _, _ = xpcall(function()
+                            data = self.incomingNetworkMessagesStream:read()
+                        end,
+                        function(err)
+                            return false
+                        end)
             os.sleep(0.05) -- Sleep for 1 tick
-        until(data or computer.uptime() >= currentTimeout)
+        until(data or computer.uptime() >= currentTimeout or self.state == "closed")
         
-        if data == "" or data == nil then
+        if data == "" or data == nil or self.state == "closed" then
             return "timed out"
         elseif data == self.stream.sclose then
             _ = event.ignore("net_msg", x)
@@ -1415,11 +1420,16 @@ function libnetcrypt:write(data)
         repeat
             currentTimeout = computer.uptime() + timeout
             repeat
-                response = self.incomingNetworkMessagesStream:read()
+                _, _ = xpcall(function()
+                                response = self.incomingNetworkMessagesStream:read()
+                            end,
+                            function(err)
+                                return false
+                            end)
                 os.sleep(0.05) -- Sleep for 1 tick
-            until(response or computer.uptime() >= currentTimeout)
+            until(response or computer.uptime() >= currentTimeout or self.state == "closed")
             
-            if response == "" or response == nil then
+            if response == "" or response == nil or self.state == "closed" then
                 break
             elseif response == self.stream.sclose then
                 _ = event.ignore("net_msg", x)
