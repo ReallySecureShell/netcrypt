@@ -10,6 +10,15 @@ A library for OpenComputers that facilitates the creation of encrypted communica
 |write(data)| nil | Encrypt and write data to the stream |
 |close()| nil | Destroy the socket and close the communication channel |
 
+## Security Considerations
+As this software deals heavily on the subject of data security and privacy, it is your right to be aware of the exact security guarantees this software provides.
+
+* The connection is private. An adversary is unable to read the contents of messages transferred by this software.
+
+* Messages are non-repudiable. The plaintext in each message is signed then encrypted, and the resulting ciphertext is signed again. By doing this, the receiver knows that the sender is the one who originally wrote the message, and the sender is the one who encrypted the message.
+
+* Message integrity is maintained. An adversary is unable to alter the contents of messages without alerting one of the communicating peers to the change.
+
 ## Examples
 An example of connecting to a socket and reading data.
 ```
