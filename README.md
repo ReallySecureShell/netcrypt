@@ -35,7 +35,7 @@ mySocket:write("Hello world")
 mySocket:close()
 ```
 
-An example of connecting to a socket using custom cipher parameters.
+An example of connecting to a socket using user-specified parameters.
 ```
 local netcrypt = require("netcrypt")
 
@@ -44,7 +44,7 @@ local mySocket = netcrypt.open("my_peer", 9999, {[1] = 256}, {[1] = "sha"}, {[1]
 ...
 ```
 
-An example of creating a socket using custom cipher parameters.
+An example of creating a socket using user-specified parameters.
 ```
 local netcrypt = require("netcrypt")
 
