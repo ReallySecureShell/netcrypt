@@ -1444,11 +1444,16 @@ function libnetcrypt:write(data)
                 status, errmsg, response = packetDeconstructor(response, self.sessionRecord.masterSecret, self.sessionRecord.iv, self.sessionRecord.isCompressed, self.sessionRecord.peerPublicKey, self.sessionRecord.localPublicKeyChecksum)
                 
                 if not status then
-                    ALERT[errmsg](self.stream, self.sessionRecord.masterSecret, self.sessionRecord.iv, self.sessionRecord.isCompressed, self.sessionRecord.localPrivateKey, self.sessionRecord.peerPublicKeyChecksum)
-                    _ = event.ignore("net_msg", x)
-                    self:close()
-                    self.state = "closed"
-                    break
+                    if errmsg == "bad_mac" then
+                        ALERT["bad_mac"](self.stream, self.sessionRecord.masterSecret, self.sessionRecord.iv, self.sessionRecord.isCompressed, self.sessionRecord.localPrivateKey, self.sessionRecord.peerPublicKeyChecksum)
+                        break
+                    else
+                        ALERT[errmsg](self.stream, self.sessionRecord.masterSecret, self.sessionRecord.iv, self.sessionRecord.isCompressed, self.sessionRecord.localPrivateKey, self.sessionRecord.peerPublicKeyChecksum)
+                        _ = event.ignore("net_msg", x)
+                        self:close()
+                        self.state = "closed"
+                        break
+                    end
                 end
                 
                 if response["msg_type"] == "FATAL" then
