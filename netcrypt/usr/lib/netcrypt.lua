@@ -1,4 +1,5 @@
 local component = require("component")
+local computer  = require("computer")
 local event     = require("event")
 local minitel   = require("minitel")
 local serial    = require("serialization")
@@ -474,8 +475,6 @@ function libnetcrypt.open(peerAddress, port, ...)
     checkArg(2, port, "number")
     
     -- Is used through the rest of the session.
-    local internalReadEventName  = nil
-    local internalWriteEventName = nil
     local isCompressed           = nil
     local iv                     = nil
     local keySize                = nil
@@ -487,6 +486,7 @@ function libnetcrypt.open(peerAddress, port, ...)
     local peerPublicKeyChecksum  = nil
     local stream                 = nil
     -- Is only used within the handshake.
+    local _                      = nil
     local clientFinishedTable    = nil
     local clientSupportedCiphers = nil
     local digestAlgorithm        = nil
@@ -799,17 +799,31 @@ function libnetcrypt.open(peerAddress, port, ...)
     status                 = nil
     ---------------------------------------------------------------------------
     
-    internalReadEventName = "readEvent_"..peerAddress.."_"..port
-    internalReadEventName, _ = internalReadEventName:gsub('-','_')
+    _ = stream:read("*a")
     
-    internalWriteEventName = "writeEvent_"..peerAddress.."_"..port
-    internalWriteEventName, _ = internalWriteEventName:gsub('-','_')
+    _ = nil
     
     return setmetatable({
-        internalReadEventName  = internalReadEventName;
-        internalWriteEventName = internalWriteEventName;
-        peerHasClosedConnection = false;
-        sessionHandleIncomingNetworkMessagesEventID = nil;
+        incomingNetworkMessagesStream = {
+            buffer = {},
+            read = function(self)
+                if #self.buffer == 0 then
+                    return nil
+                else
+                    local readBuffer = nil
+                    for k,v in ipairs(self.buffer) do
+                        readBuffer = v
+                        table.remove(self.buffer,k)
+                        break
+                    end
+                    return readBuffer
+                end
+            end,
+            write = function(self, data)
+                self.buffer[#self.buffer + 1] = data
+            end,
+        };
+        incomingNetworkMessagesHandlerEventID = false;
         state  = "open";
         stream = stream;
         sessionRecord = {
@@ -835,8 +849,6 @@ function libnetcrypt.listen(port, ...)
     checkArg(1, port, "number")
     
     -- Is used through the rest of the session.
-    local internalReadEventName  = nil
-    local internalWriteEventName = nil
     local isCompressed           = nil
     local iv                     = nil
     local keySize                = nil
@@ -849,6 +861,7 @@ function libnetcrypt.listen(port, ...)
     local peerPublicKeyChecksum  = nil
     local stream                 = nil
     -- Is only used within the handshake.
+    local _                      = nil
     local digestAlgorithm        = nil
     local errmsg                 = nil
     local initialClientSelectedCiphers = nil
@@ -1250,17 +1263,34 @@ function libnetcrypt.listen(port, ...)
     status                 = nil
     ---------------------------------------------------------------------------
     
-    internalReadEventName = "readEvent_"..peerAddress.."_"..port
-    internalReadEventName, _ = internalReadEventName:gsub('-','_')
+    _ = stream:read("*a") -- Consume data stored within the stream's buffers.
+                          -- This is how we release data from the handshake
+                          -- before we start sending normal messages.
     
-    internalWriteEventName = "writeEvent_"..peerAddress.."_"..port
-    internalWriteEventName, _ = internalWriteEventName:gsub('-','_')
+    _ = nil -- Remove all data stored within '_' variable to remove it from
+            -- running memory.
     
     return setmetatable({
-        internalReadEventName  = internalReadEventName;
-        internalWriteEventName = internalWriteEventName;
-        peerHasClosedConnection = false;
-        sessionHandleIncomingNetworkMessagesEventID = nil;
+        incomingNetworkMessagesStream = {
+            buffer = {},
+            read = function(self)
+                if #self.buffer == 0 then
+                    return nil
+                else
+                    local readBuffer = nil
+                    for k,v in ipairs(self.buffer) do
+                        readBuffer = v
+                        table.remove(self.buffer,k)
+                        break
+                    end
+                    return readBuffer
+                end
+            end,
+            write = function(self, data)
+                self.buffer[#self.buffer + 1] = data
+            end,
+        };
+        incomingNetworkMessagesHandlerEventID = false;
         state  = "open";
         stream = stream;
         sessionRecord = {
@@ -1279,73 +1309,69 @@ function libnetcrypt.listen(port, ...)
     }, libnetcrypt)
 end
 
--- Debugging
--- local bar = libnetcrypt.listen(9999, {[1] = 256}, {[1] = "sha"}, {[1] = true}) -- original
-
--- local bar = libnetcrypt.listen(9999, {[1] = 256, [2] = 256}, {[1] = "sha", [2] = "md5"}, {[1] = "true"}) -- Debugging
-
 function libnetcrypt:incomingNetworkMessagesHandler(peerAddress, port, data)
-    local errmsg = nil
-    local status = nil
-    
-    if peerAddress == self.sessionRecord.peerAddress and port == self.stream.port and data == self.stream.sclose then
-        -- Do nothing
-    elseif peerAddress == self.sessionRecord.peerAddress and port == self.stream.port and data ~= self.stream.sclose then
-        status, errmsg, data = packetDeconstructor(data, self.sessionRecord.masterSecret, self.sessionRecord.iv, self.sessionRecord.isCompressed, self.sessionRecord.peerPublicKey, self.sessionRecord.localPublicKeyChecksum)
-        if not status then
-            if errmsg == "bad_checksum" then
-                ALERT["resend"](self.stream, self.sessionRecord.masterSecret, self.sessionRecord.iv, self.sessionRecord.isCompressed, self.sessionRecord.localPrivateKey, self.sessionRecord.peerPublicKeyChecksum)
-                event.push(self.internalReadEventName, "WARN", string.upper(errmsg))
-            else
-                self:close(errmsg)
-            end
-        else
-            if data["msg_type"] == "FATAL" then
-                if data["msg"] == "BAD_MAC" then
-                    -- Do nothing
-                else
-                    self.peerHasClosedConnection = true
-                    self:close(data["msg"])
-                end
-            elseif data["msg_type"] == "WARN" then
-                if data["msg"] == "RESEND" then
-                    event.push(self.internalWriteEventName, "WARN", "RESEND")
-                end
-            elseif data["msg_type"] == "PEER_MSG" then
-                ALERT["msg_ok"](self.stream, self.sessionRecord.masterSecret, self.sessionRecord.iv, self.sessionRecord.isCompressed, self.sessionRecord.localPrivateKey, self.sessionRecord.peerPublicKeyChecksum)
-                self.sessionRecord.iv = data["new_iv"]
-                event.push(self.internalReadEventName, "PEER_MSG", data["msg"])
-            elseif data["msg_type"] == "OK" then
-                if data["msg"] == "MSG_OK" then
-                    event.push(self.internalWriteEventName, "OK", "MSG_OK")
-                end
-            end
-        end
+    if peerAddress == self.sessionRecord.peerAddress and port == self.stream.port then
+        self.incomingNetworkMessagesStream:write(data)
     else
         -- Do nothing
     end
 end
 
 function libnetcrypt:read()
-    local _       = nil
-    local data    = nil
-    local msgType = nil
+    local _              = nil
+    local currentTimeout = nil
+    local data           = nil
+    local errmsg         = nil
+    local status         = nil
     
     local function x(_, peerAddress, port, data)
         self:incomingNetworkMessagesHandler(peerAddress, port, data)
     end
     
-    if not self.sessionHandleIncomingNetworkMessagesEventID and self.state == "open" then
-        self.sessionHandleIncomingNetworkMessagesEventID = event.listen("net_msg", x)
+    if not self.incomingNetworkMessagesHandlerEventID and self.state == "open" then
+        self.incomingNetworkMessagesHandlerEventID = event.listen("net_msg", x)
     end
     
     if self.state == "open" then
-        _, msgType, data = event.pull(self.internalReadEventName)
+        currentTimeout = computer.uptime() + timeout
+        repeat
+            data = self.incomingNetworkMessagesStream:read()
+            os.sleep(0.05) -- Sleep for 1 tick
+        until(data or computer.uptime() >= currentTimeout)
         
-        if msgType == "WARN" then
-            return data
-        elseif msgType == "PEER_MSG" then
-            return data
+        if data == "" or data == nil then
+            return "timed out"
+        elseif data == self.stream.sclose then
+            _ = event.ignore("net_msg", x)
+            self:close()
+            self.state = "closed"
+            return "session closed"
+        else
+            status, errmsg, data = packetDeconstructor(data, self.sessionRecord.masterSecret, self.sessionRecord.iv, self.sessionRecord.isCompressed, self.sessionRecord.peerPublicKey, self.sessionRecord.localPublicKeyChecksum)
+            
+            if not status then
+                ALERT[errmsg](self.stream, self.sessionRecord.masterSecret, self.sessionRecord.iv, self.sessionRecord.isCompressed, self.sessionRecord.localPrivateKey, self.sessionRecord.peerPublicKeyChecksum)
+                _ = event.ignore("net_msg", x)
+                self:close()
+                self.state = "closed"
+                return "local: read: "..string.upper(errmsg)
+            end
+            
+            if data["msg_type"] == "FATAL" then
+                if data["msg"] == "BAD_MAC" then
+                    ALERT["resend"](self.stream, self.sessionRecord.masterSecret, self.sessionRecord.iv, self.sessionRecord.isCompressed, self.sessionRecord.localPrivateKey, self.sessionRecord.peerPublicKeyChecksum)
+                    return "peer: write: BAD_MAC"
+                else
+                    _ = event.ignore("net_msg", x)
+                    self:close()
+                    self.state = "closed"
+                    return "peer: write: "..data["msg"]
+                end
+            elseif data["msg_type"] == "PEER_MSG" then
+                ALERT["msg_ok"](self.stream, self.sessionRecord.masterSecret, self.sessionRecord.iv, self.sessionRecord.isCompressed, self.sessionRecord.localPrivateKey, self.sessionRecord.peerPublicKeyChecksum)
+                self.sessionRecord.iv = data["new_iv"]
+                return data["msg"]
+            end
         end
     else
         -- Do nothing
@@ -1357,20 +1383,20 @@ local function sendPeerMessage(stream, data, newIV, mS, iV, iC, lPvtK, pPubKChk)
 end
 
 function libnetcrypt:write(data)
-    local _          = nil
-    local errmsg     = nil
-    local msgCorrect = 0
-    local msgType    = nil
-    local newIV      = nil
-    local status     = nil
-    local response   = nil
+    local _              = nil
+    local currentTimeout = nil
+    local errmsg         = nil
+    local msgCorrect     = 0
+    local newIV          = nil
+    local response       = nil
+    local status         = nil
     
-    local function y(_, peerAddress, port, data)
+    local function x(_, peerAddress, port, data)
         self:incomingNetworkMessagesHandler(peerAddress, port, data)
     end
     
-    if not self.sessionHandleIncomingNetworkMessagesEventID and self.state == "open" then
-        self.sessionHandleIncomingNetworkMessagesEventID = event.listen("net_msg", y)
+    if not self.incomingNetworkMessagesHandlerEventID and self.state == "open" then
+        self.incomingNetworkMessagesHandlerEventID = event.listen("net_msg", x)
     end
     
     if self.state == "open" then
@@ -1379,24 +1405,58 @@ function libnetcrypt:write(data)
         status, errmsg = sendPeerMessage(self.stream, data, newIV, self.sessionRecord.masterSecret, self.sessionRecord.iv, self.sessionRecord.isCompressed, self.sessionRecord.localPrivateKey, self.sessionRecord.peerPublicKeyChecksum)
         
         if not status then
-            self:close(errmsg)
+            ALERT[errmsg](self.stream, self.sessionRecord.masterSecret, self.sessionRecord.iv, self.sessionRecord.isCompressed, self.sessionRecord.localPrivateKey, self.sessionRecord.peerPublicKeyChecksum)
+            _ = event.ignore("net_msg", x)
+            self:close()
+            self.state = "closed"
+            return string.upper("local: write: "..errmsg)
         end
         
         repeat
-            _, msgType, response = event.pull(timeout, self.internalWriteEventName)
+            currentTimeout = computer.uptime() + timeout
+            repeat
+                response = self.incomingNetworkMessagesStream:read()
+                os.sleep(0.05) -- Sleep for 1 tick
+            until(response or computer.uptime() >= currentTimeout)
             
-            if msgType == "" then
-                msgCorrect = 1
-            elseif msgType == "WARN" then
-                if msgType == "RESEND" then
+            if response == "" or response == nil then
+                break
+            elseif response == self.stream.sclose then
+                _ = event.ignore("net_msg", x)
+                self:close()
+                self.state = "closed"
+                break
+            else
+                status, errmsg, response = packetDeconstructor(response, self.sessionRecord.masterSecret, self.sessionRecord.iv, self.sessionRecord.isCompressed, self.sessionRecord.peerPublicKey, self.sessionRecord.localPublicKeyChecksum)
+                
+                if not status then
+                    ALERT[errmsg](self.stream, self.sessionRecord.masterSecret, self.sessionRecord.iv, self.sessionRecord.isCompressed, self.sessionRecord.localPrivateKey, self.sessionRecord.peerPublicKeyChecksum)
+                    _ = event.ignore("net_msg", x)
+                    self:close()
+                    self.state = "closed"
+                    break
+                end
+                
+                if response["msg_type"] == "FATAL" then
+                    if response["msg"] == "BAD_MAC" then
+                        break
+                    else
+                        _ = event.ignore("net_msg", x)
+                        self:close()
+                        self.state = "closed"
+                        break
+                    end
+                elseif response["msg_type"] == "WARN" then -- Resend Message
                     status, errmsg = sendPeerMessage(self.stream, data, newIV, self.sessionRecord.masterSecret, self.sessionRecord.iv, self.sessionRecord.isCompressed, self.sessionRecord.localPrivateKey, self.sessionRecord.peerPublicKeyChecksum)
                     if not status then
-                        self:close(errmsg)
+                        ALERT[errmsg](self.stream, self.sessionRecord.masterSecret, self.sessionRecord.iv, self.sessionRecord.isCompressed, self.sessionRecord.localPrivateKey, self.sessionRecord.peerPublicKeyChecksum)
+                        _ = event.ignore("net_msg", x)
+                        self:close()
+                        self.state = "closed"
+                        break
                     end
                     msgCorrect = 0
-                end
-            elseif msgType == "OK" then
-                if response == "MSG_OK" then
+                elseif response["msg_type"] == "OK" then
                     self.sessionRecord.iv = newIV
                     msgCorrect = 1
                 end
@@ -1407,39 +1467,17 @@ function libnetcrypt:write(data)
     end
 end
 
-function libnetcrypt:close(...)
-    local _           = nil
-    local closeReason = nil
-    
-    if not ... then
-        closeReason = "close_notify"
-    else
-        closeReason = ...
-        closeReason = string.lower(closeReason)
-    end
-    
-    self.state = "close"
-    
-    -- Stop the network message event handler
-    event.cancel(self.sessionHandleIncomingNetworkMessagesEventID)
-    
-    if self.peerHasClosedConnection == false then
-        _, _ = xpcall(function()
-                        ALERT[closeReason](self.stream, self.sessionRecord.masterSecret, self.sessionRecord.iv, self.sessionRecord.isCompressed, self.sessionRecord.localPrivateKey, self.sessionRecord.peerPublicKeyChecksum)
-                    end,
-                    function(err)
-                        return false
-                    end)
-    else
-        -- Do nothing
-    end
-    
-    self.stream:close()
-    self.state = nil
-    self.stream = nil
-    self.sessionHandleIncomingNetworkMessagesEventID = nil
-    self.internalReadEventName = nil
-    self.internalWriteEventName = nil
+function libnetcrypt:close()
+    local _ = nil
+    self.state = "closed"
+    _ = event.cancel(self.incomingNetworkMessagesHandlerEventID)
+    self.stream.rbuffer = ""
+    _, _ = xpcall(function()
+                    self.stream:close()
+                end,
+                function(err)
+                    return false
+                end)
     self.sessionRecord = nil
 end
 
