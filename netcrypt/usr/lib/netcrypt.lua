@@ -1355,16 +1355,20 @@ function libnetcrypt:read()
             status, errmsg, data = packetDeconstructor(data, self.sessionRecord.masterSecret, self.sessionRecord.iv, self.sessionRecord.isCompressed, self.sessionRecord.peerPublicKey, self.sessionRecord.localPublicKeyChecksum)
             
             if not status then
-                ALERT[errmsg](self.stream, self.sessionRecord.masterSecret, self.sessionRecord.iv, self.sessionRecord.isCompressed, self.sessionRecord.localPrivateKey, self.sessionRecord.peerPublicKeyChecksum)
-                _ = event.ignore("net_msg", x)
-                self:close()
-                self.state = "closed"
-                return "local: read: "..string.upper(errmsg)
+                if errmsg == "bad_mac" then
+                    ALERT["resend"](self.stream, self.sessionRecord.masterSecret, self.sessionRecord.iv, self.sessionRecord.isCompressed, self.sessionRecord.localPrivateKey, self.sessionRecord.peerPublicKeyChecksum)
+                    return "local: read: BAD_MAC"
+                else
+                    ALERT[errmsg](self.stream, self.sessionRecord.masterSecret, self.sessionRecord.iv, self.sessionRecord.isCompressed, self.sessionRecord.localPrivateKey, self.sessionRecord.peerPublicKeyChecksum)
+                    _ = event.ignore("net_msg", x)
+                    self:close()
+                    self.state = "closed"
+                    return "local: read: "..string.upper(errmsg)
+                end
             end
             
             if data["msg_type"] == "FATAL" then
                 if data["msg"] == "BAD_MAC" then
-                    ALERT["resend"](self.stream, self.sessionRecord.masterSecret, self.sessionRecord.iv, self.sessionRecord.isCompressed, self.sessionRecord.localPrivateKey, self.sessionRecord.peerPublicKeyChecksum)
                     return "peer: write: BAD_MAC"
                 else
                     _ = event.ignore("net_msg", x)
