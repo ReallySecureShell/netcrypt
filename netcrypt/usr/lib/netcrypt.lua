@@ -1482,6 +1482,7 @@ function libnetcrypt:close()
     self.state = "closed"
     _ = event.cancel(self.incomingNetworkMessagesHandlerEventID)
     self.stream.rbuffer = ""
+    self.incomingNetworkMessagesStream.buffer = {}
     _, _ = xpcall(function()
                     self.stream:close()
                 end,
