@@ -274,6 +274,11 @@ local function packetDeconstructor(data, ...)
             return false, "decode_error", ""
         end
         
+        if not data.checksum or not data.data then
+            data = nil
+            return false, "malformed_message", ""
+        end
+        
         -- Verify the integrity of the message by comparing checksums.
         -- Notice, the hash algorithm is always sha256 when no parameters are
         -- supplied.
@@ -348,6 +353,12 @@ local function packetDeconstructor(data, ...)
             return false, "decode_error", ""
         end
         
+        if not data.outer_signature or not data.root then
+            data = nil
+            clearPacketDeconstructorMessageData()
+            return false, "malformed_message", ""
+        end
+        
         status, _ = xpcall(function(rootSerialized, outerSignature)
                             if datacard.ecdsa(rootSerialized, peerPublicKey, outerSignature) == false then
                                 error()
@@ -374,6 +385,12 @@ local function packetDeconstructor(data, ...)
             data = nil
             clearPacketDeconstructorMessageData()
             return false, "decode_error", ""
+        end
+        
+        if not data.root.peer_public_key_checksum or not data.root.private then
+            data = nil
+            clearPacketDeconstructorMessageData()
+            return false, "malformed_message", ""
         end
         
         status, _ = xpcall(function(peerPublicKeyChecksum)
@@ -414,6 +431,12 @@ local function packetDeconstructor(data, ...)
             data = nil
             clearPacketDeconstructorMessageData()
             return false, "decode_error", ""
+        end
+        
+        if not data.root.private.inner_signature or not data.root.private.message then
+            data = nil
+            clearPacketDeconstructorMessageData()
+            return false, "malformed_message", ""
         end
         
         status, _ = xpcall(function(rootPrivateMessageSerialized, innerSignature)
@@ -463,6 +486,7 @@ local ALERT = {
     ["encrypt_error"]        = function(stream, ...) _, _ = packetBuilder(stream, {["msg_type"] = "FATAL", ["msg"] = "ENCRYPT_ERROR"}, ...) end, -- Encryption of data failed.
     ["handshake_failure"]    = function(stream, ...) _, _ = packetBuilder(stream, {["msg_type"] = "FATAL", ["msg"] = "HANDSHAKE_FAILURE"}, ...) end, -- An error of some kind relating to the handshake occurred.
     ["internal_error"]       = function(stream, ...) _, _ = packetBuilder(stream, {["msg_type"] = "FATAL", ["msg"] = "INTERNAL_ERROR"}, ...) end, -- An error unrelated to the protocol has occurred.
+    ["malformed_message"]    = function(stream, ...) _, _ = packetBuilder(stream, {["msg_type"] = "FATAL", ["msg"] = "MALFORMED_MESSAGE"}, ...) end, -- The message does not contain one or more of the expected key-value pairs.
     ["msg_ok"]               = function(stream, ...) _, _ = packetBuilder(stream, {["msg_type"] = "OK",    ["msg"] = "MSG_OK"}, ...) end, -- The peer sent a message that did not result in any error(s) occurring. The message content itself may be a fatal message, however the message was able to be deconstructed successfully.
     ["resend"]               = function(stream, ...) _, _ = packetBuilder(stream, {["msg_type"] = "WARN",  ["msg"] = "RESEND"}, ...) end, -- The peer sent a message that had a bad_checksum, as a result, the peer is asked to resend the message.
     ["transmission_failure"] = function(stream, ...) _, _ = packetBuilder(stream, {["msg_type"] = "FATAL", ["msg"] = "TRANSMISSION_FAILURE"}, ...) end, -- An error occurred while attempting to send the message.
