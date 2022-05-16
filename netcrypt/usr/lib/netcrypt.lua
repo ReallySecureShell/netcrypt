@@ -9,8 +9,6 @@ The purpose of this library is to provide cryptographic functions for securing
 network messages between two communicating parties. Netcrypt takes on some
 qualities of the Transport Layer Security (TLS) protocol. With TLS 1.2 being
 used as a reference, which is documented in Request For Comments (RFC) 5246.
-
-MORE TO BE SAID HERE
 --]=====]
 
 -- Pre-defined variables and tables
@@ -477,7 +475,6 @@ local ALERT = {
     ["bad_checksum"]         = function(stream, ...) _, _ = packetBuilder(stream, {["msg_type"] = "FATAL", ["msg"] = "BAD_CHECKSUM"}, ...) end, -- When comparing the checksums of the sent and received message, the checksums did not match.
     ["bad_mac"]              = function(stream, ...) _, _ = packetBuilder(stream, {["msg_type"] = "FATAL", ["msg"] = "BAD_MAC"}, ...) end, -- The signature of the message does not match the contents of the actual received message. A malicious party may be trying to attack the connection.
     ["bad_record"]           = function(stream, ...) _, _ = packetBuilder(stream, {["msg_type"] = "FATAL", ["msg"] = "BAD_RECORD"}, ...) end, -- A message had an different hash value than the expected hash value.
-    ["close_notify"]         = function(stream, ...) _, _ = packetBuilder(stream, {["msg_type"] = "FATAL", ["msg"] = "CLOSE_NOTIFY"}, ...) end, -- Not an error, but the stream must close immediately.
     ["compression_error"]    = function(stream, ...) _, _ = packetBuilder(stream, {["msg_type"] = "FATAL", ["msg"] = "COMPRESSION_ERROR"}, ...) end, -- The data was unable to be compressed due to an error.
     ["decode_error"]         = function(stream, ...) _, _ = packetBuilder(stream, {["msg_type"] = "FATAL", ["msg"] = "DECODE_ERROR"}, ...) end, -- When deserialization fails.
     ["decompression_error"]  = function(stream, ...) _, _ = packetBuilder(stream, {["msg_type"] = "FATAL", ["msg"] = "DECOMPRESSION_ERROR"}, ...) end, -- A message was unable to be decompressed.
@@ -1523,6 +1520,7 @@ function libnetcrypt:close()
                     return false
                 end)
     self.sessionRecord = nil
+    self.stream        = nil
 end
 
 return libnetcrypt
