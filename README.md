@@ -6,12 +6,12 @@ A library for OpenComputers that facilitates the creation of encrypted communica
 | :---: | :---:   | :---        |
 |open(addr, port, [clientPreferredParameters])| Object | Opens a connection to a listening socket |
 |listen(port, [serverAllowedParameters])| Object | Creates a socket and waits for a peer to connect |
-|read()| string or table | Decrypt and return data from the stream |
+|read()| number, string, or table | Decrypt and return data from the stream |
 |write(data)| nil | Encrypt and write data to the stream |
 |close()| nil | Destroy the socket and close the communication channel |
 
 ## Security Considerations
-As this software deals heavily on the subject of data security and privacy, it is your right to be aware of the exact security guarantees this software provides.
+As this software deals heavily on the subject of data security and privacy, it is paramount to be aware of the exact security guarantees this software provides. The software provides the following three (3) guarantees:
 
 * The connection is private. An adversary is unable to read the contents of messages transferred by this software.
 
