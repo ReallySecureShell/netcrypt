@@ -2,8 +2,8 @@
 A library for OpenComputers that facilitates the creation of encrypted communication channels between applications.
 
 ## Methods
-| Name  | Returns | Description |
-| :---: | :---:   | :---        |
+| Method | Returns | Description |
+| :---:  | :---:   | :---        |
 |open(addr, port, [clientPreferredParameters])| Object | Opens a connection to a listening socket |
 |listen(port, [serverAllowedParameters])| Object | Creates a socket and waits for a peer to connect |
 |read()| number, string, or table | Decrypt and return data from the stream |
