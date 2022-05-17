@@ -19,6 +19,12 @@ As this software deals heavily on the subject of data security and privacy, it i
 
 * Message integrity is maintained. An adversary is unable to alter the contents of messages without alerting one of the communicating peers to the change.
 
+## Installation
+Registering the repository using OPPM:
+```
+oppm register ReallySecureShell/netcrypt
+```
+
 ## Examples
 An example of connecting to a socket and reading data.
 ```
