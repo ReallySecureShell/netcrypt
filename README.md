@@ -63,9 +63,11 @@ local mySocket = netcrypt.listen(9999, {[1] = 256}, {[1] = "sha"}, {[1] = true})
 ```
 
 ### Optional Parameters
-When opening or creating a socket, you can optionally pass some parameter options. These options include the encryption key size, hashing algorithm, and whether or not data should be compressed. The last two examples above depicted setting these parameters. Notice that each setting is within its own table. The following table shows the complete list of parameter options:
+When connecting to or creating a socket, you may optionally pass some parameter options. These options include the encryption key size, hashing algorithm, and whether or not data should be compressed. The last two examples above demonstrated setting these parameters. What follows is a complete list of parameter options:
 | Table 1 - Key Size | Table 2 - Hashing Algorithm | Table 3 - Use Compression |
 | :---    | :---    | :---    |
 | {[1] = 256, [2] = 384} | {[1] = "sha", [2] = "md5"} | {[1] = true, [2] = false} |
 
 You may switch the values in the first and second keys in any combination that you wish, without of course editing the numeric key value itself. While both ends of the connection do not need to have the same order of values, both ends MUST have one common value in each table. For example, if a peer connects to a socket with `open("mypeer", 9999, {[1] = 256}, {[1] = "sha", [2] = "md5"}, {[1] = true, [2] = false})` and the socket is created with `listen(9999, {[1] = 384}, {[1] = "sha", [2] = "md5"}, {[1] = true, [2] = false})`, then the peers will refuse to connect. Because the peer who is connecting to the socket wants to use an encryption key of 256 bits, but the peer who created the socket will only agree upon an encryption key that is 384 bits.
+
+All references to "sha" refers to sha256.
