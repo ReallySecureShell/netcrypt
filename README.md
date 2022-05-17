@@ -44,6 +44,53 @@ mySocket:write("Hello world")
 mySocket:close()
 ```
 
+An example of a script that continuously reads data from the socket until the user sends a CTRL-C interrupt.
+```
+local event    = require("event")
+local netcrypt = require("netcrypt")
+local data
+local mysocket
+local stopbit = 0
+
+mysocket = netcrypt.listen(9999)
+
+local eventInterruptID = event.listen("interrupted", function()
+  stopbit = 1
+  print("closing")
+  mysocket:close()
+end)
+
+while stopbit == 0 do
+  data = mysocket:read()
+  print(data)
+end
+
+mysocket = nil
+```
+
+Similarly, a script that writes to the socket until encountering an interrupt.
+```
+local event    = require("event")
+local netcrypt = require("netcrypt")
+local mysocket
+local stopbit = 0
+
+mysocket = netcrypt.open("my_peer", 9999)
+
+local eventInterruptID = event.listen("interrupted", function()
+  stopbit = 1
+  print("closing")
+  mysocket:close()
+end)
+
+while stopbit == 0 do
+  mysocket:write("hello world")
+  os.sleep(1)
+end
+
+mysocket = nil
+```
+
 An example of connecting to a socket using user-specified parameters.
 ```
 local netcrypt = require("netcrypt")
