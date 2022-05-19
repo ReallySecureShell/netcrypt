@@ -17,6 +17,17 @@ SYNOPSIS
 DESCRIPTION
     netcrypt is a library that provides methods for creating secure communication channels. Most of the methods provided by netcrypt are meant to resemble the file manipulation methods found within lua's built-in 'io' library; this is done to provide a sense of familiarity.
 
+METHODS
+    open(addr, port, [clientPreferredParameters]):object - Opens a connection to a listening socket
+
+    listen(port, [serverAllowedParameters]):object - Creates a socket and waits for a peer to connect
+
+    read():number, string, or table - Decrypt and return data from the stream
+
+    write(data):nil - Encrypt and write data to the stream
+
+    close():nil - Destroy the socket and close the communication channel
+
 SECURITY CONSIDERATIONS
     As this software deals heavily on the subject of data security and privacy, it is paramount to be aware of the exact security guarantees this software provides. The software provides the following three (3) guarantees:
 
