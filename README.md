@@ -4,8 +4,8 @@ A library for OpenComputers that facilitates the creation of encrypted communica
 ## Methods
 | Method | Returns | Description |
 | :---:  | :---:   | :---        |
-|open(addr, port, [clientPreferredParameters])| Object | Opens a connection to a listening socket |
-|listen(port, [serverAllowedParameters])| Object | Creates a socket and waits for a peer to connect |
+|open(addr, port, [clientPreferredParameters])| object | Opens a connection to a listening socket |
+|listen(port, [serverAllowedParameters])| object | Creates a socket and waits for a peer to connect |
 |read()| number, string, or table | Decrypt and return data from the stream |
 |write(data)| nil | Encrypt and write data to the stream |
 |close()| nil | Destroy the socket and close the communication channel |
