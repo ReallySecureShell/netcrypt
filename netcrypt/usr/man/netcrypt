@@ -28,15 +28,6 @@ METHODS
 
     close():nil - Destroy the socket and close the communication channel
 
-SECURITY CONSIDERATIONS
-    As this software deals heavily on the subject of data security and privacy, it is paramount to be aware of the exact security guarantees this software provides. The software provides the following three (3) guarantees:
-
-    * The connection is private. An adversary is unable to read the contents of messages transferred by this software.
-
-    * Messages are non-repudiable. The plaintext in each message is signed then encrypted, and the resulting ciphertext is signed again. By doing this, the receiver knows that the sender is the one who originally wrote the message, and the sender is the one who encrypted the message.
-
-    * Message integrity is maintained. An adversary is unable to alter the contents of messages without alerting one of the communicating peers to the change.
-
 OPTIONAL PARAMETERS
     This section refers to the optional parameters: clientPreferredParameters and serverAllowedParameters that can be set for the open() and listen() methods respectfully.
 
@@ -51,6 +42,15 @@ OPTIONAL PARAMETERS
     You may switch the values in the first and second keys in any combination that you wish, without of course editing the numeric key value itself. While both ends of the connection do not need to have the same order of values, both ends MUST have one common value in each table. For example, if a peer connects to a socket with open("mypeer", 9999, {[1] = 256}, {[1] = "sha", [2] = "md5"}, {[1] = true, [2] = false}) and the socket is created with listen(9999, {[1] = 384}, {[1] = "sha", [2] = "md5"}, {[1] = true, [2] = false}), then the peers will refuse to connect. Because the peer who is connecting to the socket wants to use an encryption key of 256 bits, but the peer who created the socket will only agree upon an encryption key that is 384 bits.
 
     All references to "sha" refers to sha256.
+
+SECURITY CONSIDERATIONS
+    As this software deals heavily on the subject of data security and privacy, it is paramount to be aware of the exact security guarantees this software provides. The software provides the following three (3) guarantees:
+
+    * The connection is private. An adversary is unable to read the contents of messages transferred by this software.
+
+    * Messages are non-repudiable. The plaintext in each message is signed then encrypted, and the resulting ciphertext is signed again. By doing this, the receiver knows that the sender is the one who originally wrote the message, and the sender is the one who encrypted the message.
+
+    * Message integrity is maintained. An adversary is unable to alter the contents of messages without alerting one of the communicating peers to the change.
 
 EXAMPLES
     An example of connecting to a socket and reading data:
